@@ -17,6 +17,13 @@
   --font-app: var(--font-val, inherit);
   --shadow-app: var(--shadow-val, 0 4px 20px rgba(0, 0, 0, 0.05));
   --border-width-app: var(--border-val, 1px);
+
+  --radius-3xl: var(--radius-app);
+  --radius-2xl: calc(var(--radius-app) * 0.75);
+  --radius-xl: calc(var(--radius-app) * 0.5);
+  
+  --shadow-sm: var(--shadow-app);
+  --shadow-md: var(--shadow-app);
 }
 
 :root {
@@ -120,39 +127,15 @@
     border-style: solid;
     border-color: var(--border-main);
   }
-  .border {
-    border-width: var(--border-width-app);
-  }
-  .border-b {
-    border-bottom-width: var(--border-width-app);
-  }
-  .border-t {
-    border-top-width: var(--border-width-app);
-  }
-  .border-l {
-    border-left-width: var(--border-width-app);
-  }
-  .border-r {
-    border-right-width: var(--border-width-app);
-  }
-  .rounded-3xl {
-    border-radius: var(--radius-app);
-  }
-  .rounded-2xl {
-    border-radius: calc(var(--radius-app) * 0.75);
-  }
-  .rounded-xl {
-    border-radius: calc(var(--radius-app) * 0.5);
-  }
-  .shadow-sm {
-    box-shadow: var(--shadow-app);
-  }
-  .shadow-md {
-    box-shadow: var(--shadow-app);
-  }
 }
 
 @layer utilities {
+  .border { border-width: var(--border-width-app) !important; }
+  .border-b { border-bottom-width: var(--border-width-app) !important; }
+  .border-t { border-top-width: var(--border-width-app) !important; }
+  .border-l { border-left-width: var(--border-width-app) !important; }
+  .border-r { border-right-width: var(--border-width-app) !important; }
+  
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
   }

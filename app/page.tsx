@@ -14,7 +14,18 @@ import {
   Clock,
   ChevronRight,
   Users,
-  Palette
+  Palette,
+  LayoutDashboard,
+  ArrowUp,
+  ArrowDown,
+  Trash2,
+  Plus,
+  Quote,
+  Maximize2,
+  Minimize2,
+  Square,
+  Type,
+  Percent
 } from 'lucide-react';
 
 interface Lesson {
@@ -61,6 +72,30 @@ const COLORS = [
 
 const DAYS_ORDER = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
 
+interface CanvasElement {
+  id: string;
+  type: 'shape' | 'text' | 'lesson_number' | 'lesson_time' | 'progress_bar';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rotation: number;
+  color: string;
+  bgColor?: string;
+  text?: string;
+  borderRadius?: number;
+  fontSize?: number;
+  zIndex: number;
+}
+
+interface CustomWidgetData {
+  id: string;
+  name: string;
+  height: number;
+  elements: CanvasElement[];
+  bg: string;
+}
+
 export default function ScheduleApp() {
   const [activeTab, setActiveTab] = useState('home');
   const [activeDayIndex, setActiveDayIndex] = useState(0);
@@ -102,6 +137,15 @@ export default function ScheduleApp() {
   const [showNewScheduleToast, setShowNewScheduleToast] = useState(false);
   const [isSelectingEntity, setIsSelectingEntity] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
+  
+  const [homeLayout, setHomeLayout] = useState(['hero', 'quick_actions', 'today_schedule']);
+  const [isLayoutMode, setIsLayoutMode] = useState(false);
+  const [showAddWidget, setShowAddWidget] = useState(false);
+  
+  const [widgetSizes, setWidgetSizes] = useState<Record<string, 'full' | 'half'>>({});
+  const [customWidgets, setCustomWidgets] = useState<CustomWidgetData[]>([]);
+  const [editingCustomWidget, setEditingCustomWidget] = useState<CustomWidgetData | null>(null);
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
 
   // Load saved preferences and cached data
   useEffect(() => {
@@ -112,6 +156,9 @@ export default function ScheduleApp() {
     const savedCustomDesign = localStorage.getItem('customDesign');
     const cachedData = localStorage.getItem('scheduleData');
     const savedNotifications = localStorage.getItem('notifications');
+    const savedLayout = localStorage.getItem('homeLayout');
+    const savedWidgetSizes = localStorage.getItem('widgetSizes');
+    const savedCustomWidgets = localStorage.getItem('customWidgets');
     
     if (savedRole) setRole(savedRole);
     if (savedGroup) setMyGroup(savedGroup);
@@ -139,6 +186,19 @@ export default function ScheduleApp() {
         console.error('Failed to parse notifications', e);
       }
     }
+    if (savedLayout) {
+      try {
+        setHomeLayout(JSON.parse(savedLayout));
+      } catch (e) {
+        console.error('Failed to parse home layout', e);
+      }
+    }
+    if (savedWidgetSizes) {
+      try { setWidgetSizes(JSON.parse(savedWidgetSizes)); } catch(e) {}
+    }
+    if (savedCustomWidgets) {
+      try { setCustomWidgets(JSON.parse(savedCustomWidgets)); } catch(e) {}
+    }
   }, []);
 
   // Save preferences
@@ -148,6 +208,9 @@ export default function ScheduleApp() {
     localStorage.setItem('myTeacher', myTeacher);
     localStorage.setItem('theme', theme);
     localStorage.setItem('customDesign', JSON.stringify(customDesign));
+    localStorage.setItem('homeLayout', JSON.stringify(homeLayout));
+    localStorage.setItem('widgetSizes', JSON.stringify(widgetSizes));
+    localStorage.setItem('customWidgets', JSON.stringify(customWidgets));
     
     document.documentElement.setAttribute('data-theme', theme);
     
@@ -318,83 +381,521 @@ export default function ScheduleApp() {
     }
   }
 
-  const renderHome = () => (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="bg-hero-bg text-hero-text rounded-3xl p-6 shadow-lg relative overflow-hidden transition-colors duration-300">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10"></div>
-        <h2 className="text-white/60 text-sm font-medium mb-1">Сегодня, {currentTime.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</h2>
-        <h1 className="text-2xl font-bold mb-6">{role === 'student' ? myGroup : myTeacher}</h1>
-        
-        {currentLesson ? (
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300">
-                Сейчас идет {currentLesson.pair} пара
-              </span>
-              <span className="text-sm font-medium text-white/80 flex items-center gap-1">
-                <Clock size={14} /> {currentLesson.timeLeft} мин до конца
-              </span>
-            </div>
-            <h3 className="text-lg font-bold leading-tight mb-1">{currentLesson.subject}</h3>
-            <p className="text-sm text-white/70 flex items-center gap-4">
-              <span><MapPin size={12} className="inline mr-1" /> {currentLesson.room}</span>
-              {currentLesson.professor && <span><User size={12} className="inline mr-1" /> {currentLesson.professor}</span>}
-              {currentLesson.group && <span><Users size={12} className="inline mr-1" /> {currentLesson.group}</span>}
-            </p>
-          </div>
-        ) : (
-          <div className="bg-white/5 rounded-2xl p-4 border border-white/10 text-center">
-            <p className="text-white/80 font-medium">Сейчас пар нет</p>
-          </div>
-        )}
+  const renderWidget = (widgetId: string, index: number) => {
+    const isEditing = isLayoutMode;
+    
+    const moveUp = () => {
+      if (index === 0) return;
+      const newLayout = [...homeLayout];
+      [newLayout[index - 1], newLayout[index]] = [newLayout[index], newLayout[index - 1]];
+      setHomeLayout(newLayout);
+    };
+    
+    const moveDown = () => {
+      if (index === homeLayout.length - 1) return;
+      const newLayout = [...homeLayout];
+      [newLayout[index + 1], newLayout[index]] = [newLayout[index], newLayout[index + 1]];
+      setHomeLayout(newLayout);
+    };
+    
+    const removeWidget = () => {
+      setHomeLayout(homeLayout.filter((_, i) => i !== index));
+    };
 
-        {nextLesson && (
-          <div className="mt-4 flex items-center justify-between bg-white/5 rounded-xl p-3 border border-white/5">
-            <div className="min-w-0 flex-1 mr-4">
-              <p className="text-xs text-white/50 mb-0.5">Следующая ({nextLesson.pair} пара)</p>
-              <p className="text-sm font-medium truncate">{nextLesson.subject}</p>
-            </div>
-            <div className="text-right shrink-0">
-              <p className="text-xs text-white/50 mb-0.5">Начало в {nextLesson.times.startTime}</p>
-              <p className="text-sm font-bold text-blue-300">через {nextLesson.timeUntil} мин</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div>
-        <h3 className="text-lg font-bold text-text-main mb-4">Расписание на сегодня</h3>
-        {myTodaySchedule && myTodaySchedule.lessons.length > 0 ? (
-          <div className="space-y-3">
-            {myTodaySchedule.lessons.map((lesson, idx) => {
-              const times = getCallTimes(currentDayStr, lesson.pair);
-              const isPast = currentMinutes > timeToMinutes(times.endTime);
-              const isCurrent = currentLesson?.pair === lesson.pair;
-              
-              return (
-                <div key={idx} className={`flex items-center gap-4 p-4 rounded-2xl border ${isCurrent ? 'bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : isPast ? 'bg-bg-main border-border-main opacity-60' : 'bg-bg-card border-border-main shadow-sm'}`}>
-                  <div className="w-12 text-center shrink-0">
-                    <p className={`text-sm font-bold ${isCurrent ? 'text-blue-600 dark:text-blue-400' : 'text-text-main'}`}>{times.startTime}</p>
-                    <p className="text-xs text-text-muted">{times.endTime}</p>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-bold truncate ${isCurrent ? 'text-blue-700 dark:text-blue-300' : 'text-text-main'}`}>{lesson.subject}</p>
-                    <p className="text-xs text-text-muted truncate mt-0.5">
-                      Ауд. {lesson.room} {lesson.professor ? `• ${lesson.professor}` : ''} {lesson.group ? `• ${lesson.group}` : ''}
-                    </p>
-                  </div>
+    let content = null;
+    switch (widgetId) {
+      case 'hero':
+        content = (
+          <div className="bg-hero-bg text-hero-text rounded-3xl p-6 shadow-lg relative overflow-hidden transition-colors duration-300">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10"></div>
+            <h2 className="text-white/60 text-sm font-medium mb-1">Сегодня, {currentTime.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</h2>
+            <h1 className="text-2xl font-bold mb-6">{role === 'student' ? myGroup : myTeacher}</h1>
+            
+            {currentLesson ? (
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300">
+                    Сейчас идет {currentLesson.pair} пара
+                  </span>
+                  <span className="text-sm font-medium text-white/80 flex items-center gap-1">
+                    <Clock size={14} /> {currentLesson.timeLeft} мин до конца
+                  </span>
                 </div>
-              );
-            })}
+                <h3 className="text-lg font-bold leading-tight mb-1">{currentLesson.subject}</h3>
+                <p className="text-sm text-white/70 flex items-center gap-4">
+                  <span><MapPin size={12} className="inline mr-1" /> {currentLesson.room}</span>
+                  {currentLesson.professor && <span><User size={12} className="inline mr-1" /> {currentLesson.professor}</span>}
+                  {currentLesson.group && <span><Users size={12} className="inline mr-1" /> {currentLesson.group}</span>}
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white/5 rounded-2xl p-4 border border-white/10 text-center">
+                <p className="text-white/80 font-medium">Сейчас пар нет</p>
+              </div>
+            )}
+
+            {nextLesson && (
+              <div className="mt-4 flex items-center justify-between bg-white/5 rounded-xl p-3 border border-white/5">
+                <div className="min-w-0 flex-1 mr-4">
+                  <p className="text-xs text-white/50 mb-0.5">Следующая ({nextLesson.pair} пара)</p>
+                  <p className="text-sm font-medium truncate">{nextLesson.subject}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs text-white/50 mb-0.5">Начало в {nextLesson.times.startTime}</p>
+                  <p className="text-sm font-bold text-blue-300">через {nextLesson.timeUntil} мин</p>
+                </div>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="text-center py-8 text-text-muted bg-bg-card rounded-3xl border border-border-main border-dashed">
-            <p className="font-medium">Сегодня выходной 🎉</p>
+        );
+        break;
+      case 'today_schedule':
+        content = (
+          <div>
+            <h3 className="text-lg font-bold text-text-main mb-4">Расписание на сегодня</h3>
+            {myTodaySchedule && myTodaySchedule.lessons.length > 0 ? (
+              <div className="space-y-3">
+                {myTodaySchedule.lessons.map((lesson, idx) => {
+                  const times = getCallTimes(currentDayStr, lesson.pair);
+                  const isPast = currentMinutes > timeToMinutes(times.endTime);
+                  const isCurrent = currentLesson?.pair === lesson.pair;
+                  
+                  return (
+                    <div key={idx} className={`flex items-center gap-4 p-4 rounded-2xl border ${isCurrent ? 'bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' : isPast ? 'bg-bg-main border-border-main opacity-60' : 'bg-bg-card border-border-main shadow-sm'}`}>
+                      <div className="w-12 text-center shrink-0">
+                        <p className={`text-sm font-bold ${isCurrent ? 'text-blue-600 dark:text-blue-400' : 'text-text-main'}`}>{times.startTime}</p>
+                        <p className="text-xs text-text-muted">{times.endTime}</p>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-bold truncate ${isCurrent ? 'text-blue-700 dark:text-blue-300' : 'text-text-main'}`}>{lesson.subject}</p>
+                        <p className="text-xs text-text-muted truncate mt-0.5">
+                          Ауд. {lesson.room} {lesson.professor ? `• ${lesson.professor}` : ''} {lesson.group ? `• ${lesson.group}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-text-muted bg-bg-card rounded-3xl border border-border-main border-dashed">
+                <p className="font-medium">Сегодня выходной 🎉</p>
+              </div>
+            )}
           </div>
-        )}
+        );
+        break;
+      case 'quick_actions':
+        content = (
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => setActiveTab('search')} className="p-4 bg-bg-card rounded-2xl border border-border-main flex flex-col items-center justify-center gap-2 text-text-main shadow-sm hover:border-accent-main transition-colors">
+              <Search size={24} className="text-accent-main" />
+              <span className="text-sm font-medium">Поиск</span>
+            </button>
+            <button onClick={() => setActiveTab('profile')} className="p-4 bg-bg-card rounded-2xl border border-border-main flex flex-col items-center justify-center gap-2 text-text-main shadow-sm hover:border-accent-main transition-colors">
+              <Settings size={24} className="text-accent-main" />
+              <span className="text-sm font-medium">Настройки</span>
+            </button>
+          </div>
+        );
+        break;
+      case 'clock':
+        content = (
+          <div className="bg-bg-card rounded-3xl p-6 border border-border-main shadow-sm flex flex-col items-center justify-center">
+            <div className="text-4xl font-bold text-accent-main tracking-tight font-mono">
+              {currentTime.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </div>
+            <div className="text-sm text-text-muted mt-1">
+              {currentTime.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </div>
+          </div>
+        );
+        break;
+      case 'quote':
+        content = (
+          <div className="bg-bg-card rounded-3xl p-6 border border-border-main shadow-sm relative overflow-hidden">
+            <Quote className="absolute -top-2 -left-2 w-16 h-16 text-border-main opacity-50" />
+            <p className="text-sm font-medium text-text-main italic relative z-10 text-center">
+              &quot;Образование — это то, что остается после того, как забывается все выученное в школе.&quot;
+            </p>
+            <p className="text-xs text-text-muted text-center mt-2 relative z-10">— Альберт Эйнштейн</p>
+          </div>
+        );
+        break;
+      default:
+        if (widgetId.startsWith('custom_')) {
+          const cw = customWidgets.find(w => w.id === widgetId);
+          if (cw) {
+            content = (
+              <div 
+                className="rounded-3xl border border-border-main shadow-sm relative overflow-hidden"
+                style={{ height: cw.height, backgroundColor: cw.bg }}
+              >
+                {cw.elements.map(el => {
+                  const style: React.CSSProperties = {
+                    position: 'absolute',
+                    left: `${el.x}%`,
+                    top: `${el.y}%`,
+                    width: `${el.w}%`,
+                    height: `${el.h}%`,
+                    transform: `rotate(${el.rotation}deg)`,
+                    zIndex: el.zIndex,
+                    color: el.color,
+                    backgroundColor: el.bgColor,
+                    borderRadius: el.borderRadius ? `${el.borderRadius}px` : undefined,
+                    fontSize: el.fontSize ? `${el.fontSize}px` : undefined,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center'
+                  };
+
+                  let elContent: React.ReactNode = null;
+                  if (el.type === 'shape') {
+                    elContent = null;
+                  } else if (el.type === 'text') {
+                    elContent = el.text;
+                  } else if (el.type === 'lesson_number') {
+                    elContent = currentLesson ? `${currentLesson.pair} пара` : 'Нет пар';
+                  } else if (el.type === 'lesson_time') {
+                    elContent = currentLesson ? `${currentLesson.timeLeft} мин` : '--:--';
+                  } else if (el.type === 'progress_bar') {
+                    if (currentLesson) {
+                      const times = getCallTimes(currentDayStr, currentLesson.pair);
+                      const start = timeToMinutes(times.startTime);
+                      const end = timeToMinutes(times.endTime);
+                      const total = end - start;
+                      const passed = currentMinutes - start;
+                      const percent = Math.max(0, Math.min(100, (passed / total) * 100));
+                      elContent = (
+                        <div className="w-full h-full bg-black/10 rounded-full overflow-hidden relative">
+                          <div className="h-full bg-current transition-all duration-1000" style={{ width: `${percent}%` }}></div>
+                        </div>
+                      );
+                    } else {
+                      elContent = <div className="w-full h-full bg-black/10 rounded-full"></div>;
+                    }
+                  }
+
+                  return (
+                    <div key={el.id} style={style}>
+                      {elContent}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          }
+        }
+        break;
+    }
+
+    if (!content) return null;
+
+    if (isEditing) {
+      return (
+        <div key={widgetId} className="relative group p-2 border-2 border-dashed border-accent-main/50 rounded-3xl bg-accent-main/5">
+          <div className="absolute -top-3 -right-3 flex gap-1 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={moveUp} disabled={index === 0} className="p-1.5 bg-bg-card border border-border-main rounded-full shadow-sm text-text-main disabled:opacity-50 hover:bg-bg-main">
+              <ArrowUp size={14} />
+            </button>
+            <button onClick={moveDown} disabled={index === homeLayout.length - 1} className="p-1.5 bg-bg-card border border-border-main rounded-full shadow-sm text-text-main disabled:opacity-50 hover:bg-bg-main">
+              <ArrowDown size={14} />
+            </button>
+            <button onClick={() => {
+              setWidgetSizes(prev => ({
+                ...prev,
+                [widgetId]: prev[widgetId] === 'half' ? 'full' : 'half'
+              }));
+            }} className="p-1.5 bg-bg-card border border-border-main rounded-full shadow-sm text-text-main hover:bg-bg-main">
+              {widgetSizes[widgetId] === 'half' ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+            </button>
+            <button onClick={removeWidget} className="p-1.5 bg-red-100 border border-red-200 rounded-full shadow-sm text-red-600 hover:bg-red-200">
+              <Trash2 size={14} />
+            </button>
+          </div>
+          <div className="pointer-events-none opacity-80" style={{ width: widgetSizes[widgetId] === 'half' ? '50%' : '100%' }}>
+            {content}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={widgetId} style={{ width: widgetSizes[widgetId] === 'half' ? 'calc(50% - 0.375rem)' : '100%', display: 'inline-block', verticalAlign: 'top' }}>
+        {content}
       </div>
+    );
+  };
+
+  const renderHome = () => (
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-8">
+      {isLayoutMode && (
+        <div className="flex justify-between items-center mb-6 bg-accent-main/10 p-3 rounded-2xl border border-accent-main/20">
+          <h2 className="text-sm font-bold text-accent-main uppercase tracking-wider">Режим редактирования</h2>
+          <button 
+            onClick={() => setIsLayoutMode(false)}
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-accent-main text-accent-text transition-colors"
+          >
+            Готово
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-3">
+        {homeLayout.map((widgetId, index) => renderWidget(widgetId, index))}
+      </div>
+
+      {isLayoutMode && (
+        <div className="mt-6 space-y-3">
+          <button 
+            onClick={() => setShowAddWidget(true)}
+            className="w-full py-4 border-2 border-dashed border-border-main rounded-3xl text-text-muted hover:text-accent-main hover:border-accent-main transition-colors flex flex-col items-center justify-center gap-2"
+          >
+            <Plus size={24} />
+            <span className="text-sm font-medium">Добавить виджет</span>
+          </button>
+          <button 
+            onClick={() => {
+              setEditingCustomWidget({
+                id: `custom_${Date.now()}`,
+                name: 'Новый виджет',
+                height: 150,
+                bg: '#ffffff',
+                elements: []
+              });
+            }}
+            className="w-full py-4 bg-bg-card border border-border-main rounded-3xl text-accent-main hover:border-accent-main transition-colors flex flex-col items-center justify-center gap-2 shadow-sm"
+          >
+            <Palette size={24} />
+            <span className="text-sm font-medium">Создать свой виджет</span>
+          </button>
+        </div>
+      )}
     </div>
   );
+
+  const renderCustomWidgetEditor = () => {
+    if (!editingCustomWidget) return null;
+
+    const addElement = (type: CanvasElement['type']) => {
+      const newEl: CanvasElement = {
+        id: `el_${Date.now()}`,
+        type,
+        x: 10,
+        y: 10,
+        w: 30,
+        h: 30,
+        rotation: 0,
+        color: '#000000',
+        bgColor: type === 'shape' ? '#cccccc' : undefined,
+        text: type === 'text' ? 'Текст' : undefined,
+        zIndex: editingCustomWidget.elements.length,
+        borderRadius: 8,
+        fontSize: 14
+      };
+      setEditingCustomWidget({
+        ...editingCustomWidget,
+        elements: [...editingCustomWidget.elements, newEl]
+      });
+      setSelectedElementId(newEl.id);
+    };
+
+    const updateElement = (id: string, updates: Partial<CanvasElement>) => {
+      setEditingCustomWidget({
+        ...editingCustomWidget,
+        elements: editingCustomWidget.elements.map(el => el.id === id ? { ...el, ...updates } : el)
+      });
+    };
+
+    const removeElement = (id: string) => {
+      setEditingCustomWidget({
+        ...editingCustomWidget,
+        elements: editingCustomWidget.elements.filter(el => el.id !== id)
+      });
+      setSelectedElementId(null);
+    };
+
+    const saveWidget = () => {
+      const exists = customWidgets.find(w => w.id === editingCustomWidget.id);
+      if (exists) {
+        setCustomWidgets(customWidgets.map(w => w.id === editingCustomWidget.id ? editingCustomWidget : w));
+      } else {
+        setCustomWidgets([...customWidgets, editingCustomWidget]);
+        setHomeLayout([...homeLayout, editingCustomWidget.id]);
+      }
+      setEditingCustomWidget(null);
+    };
+
+    const selectedEl = editingCustomWidget.elements.find(el => el.id === selectedElementId);
+
+    return (
+      <div className="fixed inset-0 z-[120] bg-bg-main flex flex-col animate-in slide-in-from-bottom-full duration-300">
+        <div className="px-6 pt-12 pb-4 border-b border-border-main flex items-center justify-between bg-bg-card">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setEditingCustomWidget(null)}
+              className="p-2 bg-bg-main rounded-full border border-border-main text-text-main"
+            >
+              <ChevronRight size={24} className="rotate-180" />
+            </button>
+            <h2 className="text-xl font-bold text-text-main">Конструктор</h2>
+          </div>
+          <button 
+            onClick={saveWidget}
+            className="px-4 py-2 bg-accent-main text-accent-text rounded-xl font-bold text-sm"
+          >
+            Сохранить
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto hide-scrollbar p-6 space-y-6">
+          {/* Canvas */}
+          <div className="bg-bg-card border-2 border-dashed border-border-main rounded-3xl p-4 flex justify-center overflow-hidden">
+            <div 
+              className="relative rounded-2xl border border-border-main shadow-sm overflow-hidden"
+              style={{ 
+                width: '100%', 
+                maxWidth: '300px', 
+                height: editingCustomWidget.height, 
+                backgroundColor: editingCustomWidget.bg 
+              }}
+              onClick={() => setSelectedElementId(null)}
+            >
+              {editingCustomWidget.elements.map(el => {
+                const isSelected = el.id === selectedElementId;
+                return (
+                  <div
+                    key={el.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedElementId(el.id);
+                    }}
+                    className={`absolute flex items-center justify-center text-center cursor-move ${isSelected ? 'ring-2 ring-accent-main ring-offset-1' : ''}`}
+                    style={{
+                      left: `${el.x}%`,
+                      top: `${el.y}%`,
+                      width: `${el.w}%`,
+                      height: `${el.h}%`,
+                      transform: `rotate(${el.rotation}deg)`,
+                      zIndex: el.zIndex,
+                      color: el.color,
+                      backgroundColor: el.bgColor,
+                      borderRadius: el.borderRadius ? `${el.borderRadius}px` : undefined,
+                      fontSize: el.fontSize ? `${el.fontSize}px` : undefined,
+                    }}
+                  >
+                    {el.type === 'text' && el.text}
+                    {el.type === 'lesson_number' && '1 пара'}
+                    {el.type === 'lesson_time' && '45 мин'}
+                    {el.type === 'progress_bar' && (
+                      <div className="w-full h-full bg-black/10 rounded-full overflow-hidden">
+                        <div className="w-1/2 h-full bg-current"></div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Toolbar */}
+          <div className="bg-bg-card rounded-2xl p-4 border border-border-main flex gap-2 overflow-x-auto hide-scrollbar">
+            <button onClick={() => addElement('shape')} className="p-3 bg-bg-main rounded-xl flex flex-col items-center gap-1 shrink-0 min-w-[70px]">
+              <Square size={20} />
+              <span className="text-[10px] font-medium">Фигура</span>
+            </button>
+            <button onClick={() => addElement('text')} className="p-3 bg-bg-main rounded-xl flex flex-col items-center gap-1 shrink-0 min-w-[70px]">
+              <Type size={20} />
+              <span className="text-[10px] font-medium">Текст</span>
+            </button>
+            <button onClick={() => addElement('lesson_number')} className="p-3 bg-bg-main rounded-xl flex flex-col items-center gap-1 shrink-0 min-w-[70px]">
+              <Clock size={20} />
+              <span className="text-[10px] font-medium">№ Пары</span>
+            </button>
+            <button onClick={() => addElement('lesson_time')} className="p-3 bg-bg-main rounded-xl flex flex-col items-center gap-1 shrink-0 min-w-[70px]">
+              <Clock size={20} />
+              <span className="text-[10px] font-medium">Время</span>
+            </button>
+            <button onClick={() => addElement('progress_bar')} className="p-3 bg-bg-main rounded-xl flex flex-col items-center gap-1 shrink-0 min-w-[70px]">
+              <Percent size={20} />
+              <span className="text-[10px] font-medium">Прогресс</span>
+            </button>
+          </div>
+
+          {/* Properties Panel */}
+          <div className="bg-bg-card rounded-3xl p-6 border border-border-main">
+            {selectedEl ? (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-text-main">Свойства элемента</h3>
+                  <button onClick={() => removeElement(selectedEl.id)} className="p-2 text-red-500 bg-red-50 rounded-lg">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-text-muted mb-1 block">X (%)</label>
+                    <input type="number" value={selectedEl.x} onChange={e => updateElement(selectedEl.id, { x: Number(e.target.value) })} className="w-full p-2 bg-bg-main rounded-lg border border-border-main text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-text-muted mb-1 block">Y (%)</label>
+                    <input type="number" value={selectedEl.y} onChange={e => updateElement(selectedEl.id, { y: Number(e.target.value) })} className="w-full p-2 bg-bg-main rounded-lg border border-border-main text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-text-muted mb-1 block">Ширина (%)</label>
+                    <input type="number" value={selectedEl.w} onChange={e => updateElement(selectedEl.id, { w: Number(e.target.value) })} className="w-full p-2 bg-bg-main rounded-lg border border-border-main text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-text-muted mb-1 block">Высота (%)</label>
+                    <input type="number" value={selectedEl.h} onChange={e => updateElement(selectedEl.id, { h: Number(e.target.value) })} className="w-full p-2 bg-bg-main rounded-lg border border-border-main text-sm" />
+                  </div>
+                </div>
+
+                {selectedEl.type === 'text' && (
+                  <div>
+                    <label className="text-xs text-text-muted mb-1 block">Текст</label>
+                    <input type="text" value={selectedEl.text || ''} onChange={e => updateElement(selectedEl.id, { text: e.target.value })} className="w-full p-2 bg-bg-main rounded-lg border border-border-main text-sm" />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-text-muted mb-1 block">Цвет текста</label>
+                    <input type="color" value={selectedEl.color} onChange={e => updateElement(selectedEl.id, { color: e.target.value })} className="w-full h-10 p-1 bg-bg-main rounded-lg border border-border-main" />
+                  </div>
+                  {(selectedEl.type === 'shape' || selectedEl.type === 'text') && (
+                    <div>
+                      <label className="text-xs text-text-muted mb-1 block">Цвет фона</label>
+                      <input type="color" value={selectedEl.bgColor || '#ffffff'} onChange={e => updateElement(selectedEl.id, { bgColor: e.target.value })} className="w-full h-10 p-1 bg-bg-main rounded-lg border border-border-main" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <h3 className="font-bold text-text-main mb-4">Настройки виджета</h3>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Название</label>
+                  <input type="text" value={editingCustomWidget.name} onChange={e => setEditingCustomWidget({...editingCustomWidget, name: e.target.value})} className="w-full p-2 bg-bg-main rounded-lg border border-border-main text-sm" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-text-muted mb-1 block">Высота (px)</label>
+                    <input type="number" value={editingCustomWidget.height} onChange={e => setEditingCustomWidget({...editingCustomWidget, height: Number(e.target.value)})} className="w-full p-2 bg-bg-main rounded-lg border border-border-main text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-text-muted mb-1 block">Цвет фона</label>
+                    <input type="color" value={editingCustomWidget.bg} onChange={e => setEditingCustomWidget({...editingCustomWidget, bg: e.target.value})} className="w-full h-10 p-1 bg-bg-main rounded-lg border border-border-main" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderSchedule = () => (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -935,10 +1436,32 @@ export default function ScheduleApp() {
       )}
 
       <div className="bg-bg-card rounded-3xl p-6 border border-border-main shadow-sm">
+        <h3 className="text-lg font-bold mb-4 text-text-main">Главный экран</h3>
+        <button 
+          onClick={() => {
+            setActiveTab('home');
+            setIsLayoutMode(true);
+          }}
+          className="w-full py-3 bg-bg-main border border-border-main rounded-2xl text-sm font-bold text-text-main hover:border-accent-main transition-colors flex items-center justify-center gap-2"
+        >
+          <LayoutDashboard size={18} />
+          Настроить виджеты
+        </button>
+      </div>
+
+      <div className="bg-bg-card rounded-3xl p-6 border border-border-main shadow-sm">
         <h3 className="text-lg font-bold mb-4 text-text-main">О приложении</h3>
         <p className="text-sm text-text-muted mb-4">
           Приложение автоматически загружает расписание с сайта колледжа и представляет его в удобном виде.
         </p>
+        <a 
+          href="https://t.me/Flibzyl228" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 text-sm font-bold text-accent-main hover:underline mb-4"
+        >
+          Связь с разработчиком
+        </a>
         <div className="text-xs text-text-muted opacity-70">
           Версия 1.0.0
         </div>
@@ -1031,6 +1554,75 @@ export default function ScheduleApp() {
           <span className="text-sm font-medium">Расписание обновлено!</span>
         </div>
       )}
+
+      {/* Add Widget Modal */}
+      {showAddWidget && (
+        <div className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-bg-main w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-8">
+            <div className="p-4 border-b border-border-main flex justify-between items-center bg-bg-card">
+              <h3 className="font-bold text-text-main">Добавить виджет</h3>
+              <button onClick={() => setShowAddWidget(false)} className="p-2 text-text-muted hover:text-text-main">
+                <ChevronRight size={20} className="rotate-180" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
+              {[
+                { id: 'hero', name: 'Главная карточка', desc: 'Текущая и следующая пара' },
+                { id: 'today_schedule', name: 'Расписание на сегодня', desc: 'Список всех пар на день' },
+                { id: 'quick_actions', name: 'Быстрые действия', desc: 'Кнопки поиска и настроек' },
+                { id: 'clock', name: 'Часы', desc: 'Текущее время и дата' },
+                { id: 'quote', name: 'Цитата дня', desc: 'Мотивирующая цитата' },
+                ...customWidgets.map(cw => ({ id: cw.id, name: cw.name, desc: 'Пользовательский виджет' }))
+              ].filter(w => !homeLayout.includes(w.id)).map(widget => (
+                <button
+                  key={widget.id}
+                  onClick={() => {
+                    setHomeLayout([...homeLayout, widget.id]);
+                    setShowAddWidget(false);
+                  }}
+                  className="w-full p-4 bg-bg-card border border-border-main rounded-2xl text-left hover:border-accent-main transition-colors flex justify-between items-center group"
+                >
+                  <div>
+                    <div className="font-bold text-text-main">{widget.name}</div>
+                    <div className="text-xs text-text-muted mt-1">{widget.desc}</div>
+                  </div>
+                  {widget.id.startsWith('custom_') && (
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const cw = customWidgets.find(w => w.id === widget.id);
+                          if (cw) setEditingCustomWidget(cw);
+                          setShowAddWidget(false);
+                        }}
+                        className="p-2 text-text-muted hover:text-accent-main opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Settings size={16} />
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCustomWidgets(customWidgets.filter(w => w.id !== widget.id));
+                        }}
+                        className="p-2 text-red-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )}
+                </button>
+              ))}
+              {['hero', 'today_schedule', 'quick_actions', 'clock', 'quote'].every(id => homeLayout.includes(id)) && customWidgets.every(cw => homeLayout.includes(cw.id)) && (
+                <div className="text-center p-4 text-text-muted text-sm">
+                  Все доступные виджеты уже добавлены
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renderCustomWidgetEditor()}
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto px-6 pb-28 hide-scrollbar bg-bg-main relative transition-colors duration-300">
